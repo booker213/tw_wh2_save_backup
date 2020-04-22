@@ -37,6 +37,8 @@ def main():
     num_interval = parser.parse_args().interval
     num_saves = parser.parse_args().num_saves
     outdir = parser.parse_args().outdir
+    assert int(num_saves) > 0, "Number of saves must be greater than or equal to 1."
+    assert (int(num_interval)) > 0, "Interval length must be greater or equal to 1."
 
     print("Initialising and creating initial save copies")
 
@@ -53,9 +55,7 @@ def main():
     print(f"Ongoing backup checks occuring every {num_interval} minutes")
 
     for file in save_files:
-        schedule.every(num_interval).minutes.do(
-            back_up_saves, file, outdir, num_saves
-        )
+        schedule.every(num_interval).minutes.do(back_up_saves, file, outdir, num_saves)
 
     while True:
         schedule.run_pending()
@@ -64,30 +64,33 @@ def main():
 
 def back_up_saves(file, outdir, num_saves):
     myfile = WH2SaveFile(file)
-    check_existing_copy = glob.glob(
-        f"{outdir}/{myfile.save_name}.{myfile.save_start}*"
-    )
-    outname = (
-        f"{myfile.save_name}.{myfile.save_start}.{myfile.date_modified}.save"
-    )
+    check_existing_copy = glob.glob(f"{outdir}/{myfile.save_name}.{myfile.save_start}*")
+    outname = f"{myfile.save_name}.{myfile.save_start}.{myfile.date_modified}.save"
     if not check_existing_copy:
         print(f"Making a backup for {os.path.basename(file)}")
         shutil.copyfile(file, os.path.join(outdir, outname))
     else:
-        if len(check_existing_copy) > num_saves:
-            check_existing_copy = sorted(check_existing_copy)
-            check_existing_copy.remove(check_existing_copy[0])
+        if len(check_existing_copy) > num_saves - 1:
+            check_existing_copy = housekeep_backups(check_existing_copy, num_saves)
 
         for backupfile in check_existing_copy:
             backup_date_modified = os.path.basename(backupfile).split(".")[2]
-            print(
-                f"Checking if {myfile.filename} has been modified since last check."
-            )
+            print(f"Checking if {myfile.filename} has been modified since last check.")
             if myfile.date_modified != int(backup_date_modified):
                 print(f"Making new backup for {myfile.filename}")
                 shutil.copyfile(file, os.path.join(outdir, outname))
             else:
                 print(f"{myfile.filename} is unmodified since backup.")
+
+
+def housekeep_backups(list_of_files, num_file_limit):
+    print("File backup limit has been exceeded.")
+    list_of_files = sorted(list_of_files)
+    while len(list_of_files) > num_file_limit - 1:
+        print(f"Removing oldest file: {os.path.basename(list_of_files[0])} from disk.")
+        os.remove(list_of_files[0])
+        list_of_files.remove(list_of_files[0])
+    return list_of_files
 
 
 class WH2SaveFile:
